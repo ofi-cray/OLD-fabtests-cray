@@ -15,6 +15,10 @@ declare SSH_CLIENT="eval"
 declare EXCLUDE
 declare GOOD_ADDR="192.168.10.1"
 declare -i VERBOSE=0
+declare TEST_OUTPUT=0
+declare CLUSTER=0
+declare CLUSTER_LAUNCH_CMD="srun -n1 --exclusive"
+declare CLUSTER_LAUNCH_SCRIPT="run_local_cs.sh"
 
 # base ssh,  "short" and "long" timeout variants:
 declare -r bssh="ssh -n -o StrictHostKeyChecking=no -o ConnectTimeout=2 -o BatchMode=yes"
@@ -190,7 +194,9 @@ function unit_test {
 	local test=$1
 	local ret1=0
 	local test_exe=$(echo "fi_${test} -f $PROV" | \
-	    sed -e "s/GOOD_ADDR/$GOOD_ADDR/g" -e "s/SERVER_ADDR/${SERVER}/g")
+	    sed -e "s/GOOD_ADDR/$GOOD_ADDR/g" \
+	        -e "s/SERVER_ADDR/${SERVER}/g" \
+	        -e "s/CLIENT_ADDR/${CLIENT}/g")
 	local start_time
 	local end_time
 	local test_time
@@ -204,7 +210,7 @@ function unit_test {
 
 	start_time=$(date '+%s')
 
-	${SSH_SERVER} ${BIN_PATH} "${test_exe}" &> $s_outp &
+	${LAUNCH_CMD} ${BIN_PATH} "${test_exe}" &> $s_outp &
 	p1=$!
 
 	wait $p1
@@ -212,6 +218,10 @@ function unit_test {
 
 	end_time=$(date '+%s')
 	test_time=$(compute_duration "$start_time" "$end_time")
+
+	if [ $TEST_OUTPUT -ne 0 ]; then
+		cat $s_outp
+	fi
 
 	if [ $ret1 -eq 61 ]; then
 		print_results "$test_exe" "Notrun" "$test_time" "$s_outp"
@@ -226,6 +236,15 @@ function unit_test {
 		print_results "$test_exe" "Pass" "$test_time" "$s_outp"
 		pass_count+=1
 	fi
+}
+
+function run_unit_test {
+	if [ $CLUSTER -eq 0 ]; then
+		LAUNCH_CMD="${SSH_SERVER}"
+	else
+		LAUNCH_CMD="$CLUSTER_LAUNCH_CMD $CLUSTER_LAUNCH_SCRIPT 0"
+	fi
+	unit_test "$1"
 }
 
 function cs_test {
@@ -263,6 +282,11 @@ function cs_test {
 	end_time=$(date '+%s')
 	test_time=$(compute_duration "$start_time" "$end_time")
 
+	if [ $TEST_OUTPUT -ne 0 ]; then
+		cat $s_outp
+		cat $c_outp
+	fi
+
 	if [ $ret1 -eq 61 -a $ret2 -eq 61 ]; then
 		print_results "$test_exe" "Notrun" "$test_time" "$s_outp" "$c_outp"
 		skip_count+=1
@@ -275,6 +299,15 @@ function cs_test {
 	else
 		print_results "$test_exe" "Pass" "$test_time" "$s_outp" "$c_outp"
 		pass_count+=1
+	fi
+}
+
+function run_cs_test {
+	if [ $CLUSTER -eq 0 ]; then
+		cs_test "$1"
+	else
+		LAUNCH_CMD="$CLUSTER_LAUNCH_CMD $CLUSTER_LAUNCH_SCRIPT 1"
+		unit_test "$1"
 	fi
 }
 
@@ -295,23 +328,23 @@ function main {
 	case ${ts} in
 		unit)
 			for test in "${unit_tests[@]}"; do
-				unit_test "$test"
+				run_unit_test "$test"
 			done
 		;;
 		simple)
 			for test in "${simple_tests[@]}"; do
-				cs_test "$test"
+				run_cs_test "$test"
 			done
 		;;
 		short)
 			for test in "${short_tests[@]}"; do
-				cs_test "$test"
+				run_cs_test "$test"
 			done
 		;;
 		standard)
 			ssh=${lssh}
 			for test in "${standard_tests[@]}"; do
-				cs_test "$test"
+				run_cs_test "$test"
 			done
 		;;
 		*)
@@ -357,7 +390,7 @@ function usage {
 	exit 1
 }
 
-while getopts ":vt:p:g:e:" opt; do
+while getopts ":vt:p:g:e:l:co" opt; do
 case ${opt} in
 	t) TEST_TYPE=$OPTARG
 	;;
@@ -368,6 +401,12 @@ case ${opt} in
 	g) GOOD_ADDR=${OPTARG}
 	;;
 	e) EXCLUDE=${OPTARG}
+	;;
+	l) CLUSTER_LAUNCH_CMD=${OPTARG}
+	;;
+	c) CLUSTER=1; CLIENT="LOCAL_IP_ADDR"; SERVER="LOCAL_IP_ADDR"
+	;;
+	o) TEST_OUTPUT=1
 	;;
 	:|\?) usage
 	;;
@@ -386,14 +425,16 @@ if [[ $# -ge 1 ]]; then
 	PROV=$1
 fi
 
-if [[ $# -ge 2 ]]; then
-	SERVER=$2
-	SSH_SERVER="${ssh} ${SERVER}"
-fi
+if [ $CLUSTER -eq 0 ]; then
+	if [[ $# -ge 2 ]]; then
+		SERVER=$2
+		SSH_SERVER="${ssh} ${SERVER}"
+	fi
 
-if [[ $# -ge 3 ]]; then
-	CLIENT=$3
-	SSH_CLIENT="${ssh} ${CLIENT}"
+	if [[ $# -ge 3 ]]; then
+		CLIENT=$3
+		SSH_CLIENT="${ssh} ${CLIENT}"
+	fi
 fi
 
 main ${TEST_TYPE}

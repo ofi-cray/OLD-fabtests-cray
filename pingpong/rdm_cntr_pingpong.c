@@ -91,17 +91,17 @@ static int recv_xfer(int size)
 {
 	int ret;
 
-	ret = fi_cntr_wait(rxcntr, recv_outs, -1);
-	if (ret < 0) {
-		FT_PRINTERR("fi_cntr_wait", ret);
-		return ret;
-	}
-
 	ret = fi_recv(ep, rx_buf, rx_size, fi_mr_desc(mr), remote_fi_addr,
 			&rx_ctx);
 	if (ret)
 		FT_PRINTERR("fi_recv", ret);
 	recv_outs++;
+
+	ret = fi_cntr_wait(rxcntr, recv_outs, -1);
+	if (ret < 0) {
+		FT_PRINTERR("fi_cntr_wait", ret);
+		return ret;
+	}
 
 	return ret;
 }
