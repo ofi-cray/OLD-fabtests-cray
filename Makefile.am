@@ -144,7 +144,9 @@ pingpong_fi_ud_pingpong_SOURCES = \
 pingpong_fi_ud_pingpong_LDADD = libfabtests.la
 
 pingpong_fi_rdm_cntr_pingpong_SOURCES = \
-	pingpong/rdm_cntr_pingpong.c
+	pingpong/rdm_cntr_pingpong.c \
+	pingpong/pingpong_shared.h \
+	pingpong/pingpong_shared.c
 pingpong_fi_rdm_cntr_pingpong_LDADD = libfabtests.la
 
 pingpong_fi_rdm_pingpong_SOURCES = \
@@ -154,11 +156,15 @@ pingpong_fi_rdm_pingpong_SOURCES = \
 pingpong_fi_rdm_pingpong_LDADD = libfabtests.la
 
 pingpong_fi_rdm_tagged_pingpong_SOURCES = \
-	pingpong/rdm_tagged_pingpong.c
+	pingpong/rdm_tagged_pingpong.c \
+	pingpong/pingpong_shared.h \
+	pingpong/pingpong_shared.c
 pingpong_fi_rdm_tagged_pingpong_LDADD = libfabtests.la
 
 pingpong_fi_rdm_inject_pingpong_SOURCES = \
-	pingpong/rdm_inject_pingpong.c
+	pingpong/rdm_inject_pingpong.c \
+	pingpong/pingpong_shared.h \
+	pingpong/pingpong_shared.c
 pingpong_fi_rdm_inject_pingpong_LDADD = libfabtests.la
 
 
@@ -270,3 +276,6 @@ ported_omb_rdm_latency_threaded_LDADD = libfabtests.la
 EXTRA_DIST += \
 	ft_utils.h
 endif
+
+test:
+	./scripts/runfabtests.sh
