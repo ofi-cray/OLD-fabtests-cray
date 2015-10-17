@@ -1,3 +1,11 @@
+fabtests
+========
+
+Fabtests provides a set of examples that uses libfabric - a high-performance fabric software library.
+
+Building
+--------
+
 To make this directory, run:
 
     ./autogen.sh && ./configure && make && make install
@@ -9,3 +17,7 @@ It the libfabric install you are using is in a non-standard location,
 you may want to configure using the --with-libfabric option:
 
     ./autogen.sh && ./configure --with-libfabric=LIBFAB_INSTALL_DIR && make && make install
+
+Running
+Reporting issues
+
