@@ -1,5 +1,2 @@
 # intermittent failures, one per line
-rdm_bw
-rdm_bw_threaded
-rdm_latency
-rdm_latency_threaded
+fi_rdm_cntr_pingpong
