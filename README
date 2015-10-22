@@ -13,11 +13,5 @@ To make this directory, run:
 Typically the autogen and configure steps only need be done the first
 time, unless configure.ac changes.
 
-It the libfabric install you are using is in a non-standard location, 
-you may want to configure using the --with-libfabric option:
-
-    ./autogen.sh && ./configure --with-libfabric=LIBFAB_INSTALL_DIR && make && make install
-
 Running
 Reporting issues
-
