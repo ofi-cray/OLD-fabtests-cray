@@ -1,2 +1,3 @@
 # intermittent failures, one per line
 fi_rdm_cntr_pingpong
+rdm_mbw_mr
