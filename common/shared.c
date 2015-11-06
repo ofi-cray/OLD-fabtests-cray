@@ -1090,7 +1090,7 @@ void ft_fill_buf(void *buf, int size)
 {
 	char *msg_buf;
 	int msg_index;
-	static int iter = 0;
+	static unsigned int iter = 0;
 	int i;
 
 	msg_index = ((iter++)*INTEG_SEED) % integ_alphabet_length;
@@ -1106,7 +1106,7 @@ int ft_check_buf(void *buf, int size)
 {
 	char *recv_data;
 	char c;
-	static int iter = 0;
+	static unsigned int iter = 0;
 	int msg_index;
 	int i;
 
@@ -1139,3 +1139,12 @@ uint64_t get_time_usec(void)
 	return usecs;
 }
 
+uint64_t ft_init_cq_data(struct fi_info *info)
+{
+	if (info->domain_attr->cq_data_size >= sizeof(uint64_t)) {
+		return 0x0123456789abcdefULL;
+	} else {
+		return 0x0123456789abcdef &
+			((0x1ULL << (info->domain_attr->cq_data_size * 8)) - 1);
+	}
+}
