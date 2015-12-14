@@ -10,6 +10,8 @@ m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 
 AC_CANONICAL_HOST
 
+AC_CONFIG_SUBDIRS([osu])
+
 macos=0
 linux=0
 

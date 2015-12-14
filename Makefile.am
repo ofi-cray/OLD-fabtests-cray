@@ -1,5 +1,6 @@
 AM_CFLAGS = -g -Wall -D_GNU_SOURCE -I$(srcdir)/include
 ACLOCAL_AMFLAGS = -I config
+SUBDIRS = osu
 
 bin_PROGRAMS = \
 	simple/fi_msg \
