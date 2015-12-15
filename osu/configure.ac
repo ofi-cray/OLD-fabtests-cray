@@ -50,7 +50,7 @@ AC_ARG_WITH([cuda-libpath],
             ])
 
 # Checks for programs.
-AC_PROG_CC([mpicc oshcc upcc])
+AC_PROG_CC([mpicc cc])
 
 # Checks for mpicxx used for compiling kernel.cu in nbc benchmarks
 AC_PROG_CXX(mpicxx)
