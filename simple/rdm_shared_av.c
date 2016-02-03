@@ -29,31 +29,33 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <getopt.h>
-#include <time.h>
-#include <netdb.h>
 #include <unistd.h>
-#include <inttypes.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <string.h>
 
-#include <rdma/fabric.h>
 #include <rdma/fi_errno.h>
 #include <rdma/fi_endpoint.h>
 #include <rdma/fi_cm.h>
-#include <rdma/fi_tagged.h>
-#include <shared.h>
 
+#include "shared.h"
+
+static int parent;
+static int pair[2];
+static int ready;
 
 static int init_fabric(void)
 {
-	uint64_t flags = 0;
 	char *node, *service;
+	uint64_t flags = 0;
 	int ret;
 
 	ret = ft_read_addr_opts(&node, &service, hints, &flags, &opts);
 	if (ret)
 		return ret;
 
+	/* Get fabric info */
 	ret = fi_getinfo(FT_FIVERSION, node, service, flags, hints, &fi);
 	if (ret) {
 		FT_PRINTERR("fi_getinfo", ret);
@@ -64,9 +66,25 @@ static int init_fabric(void)
 	if (ret)
 		return ret;
 
+	if (opts.dst_addr && !parent) {
+		/* child waits until parent is done creating AV */
+		ret = read(pair[0], &ready, sizeof(int));
+		if (ret < 0)
+			FT_PRINTERR("read", errno);
+
+		/* child needs to open AV in read only mode */
+		av_attr.flags = FI_READ;
+	}
 	ret = ft_alloc_active_res(fi);
 	if (ret)
 		return ret;
+
+	if (opts.dst_addr && parent) {
+		/* parent lets child know that AV is created */
+		ret = write(pair[1], &ready, sizeof(int));
+		if (ret < 0)
+			FT_PRINTERR("write", errno);
+	}
 
 	ret = ft_init_ep();
 	if (ret)
@@ -75,30 +93,30 @@ static int init_fabric(void)
 	return 0;
 }
 
-static int tagged_peek(uint64_t tag)
+static int send_recv()
 {
-	struct fi_cq_tagged_entry comp;
-	struct fi_msg_tagged msg;
 	int ret;
 
-	memset(&msg, 0, sizeof msg);
-	msg.tag = tag;
-	msg.context = &rx_ctx;
+	if (opts.dst_addr) {
+		fprintf(stdout, "Sending message...\n");
+		snprintf(tx_buf, FT_MAX_CTRL_MSG, "Hello from Child Client!");
 
-	ret = fi_trecvmsg(ep, &msg, FI_PEEK);
-	if (ret) {
-		FT_PRINTERR("FI_PEEK", ret);
-		return ret;
+		ret = ft_tx(strlen(tx_buf));
+		if (ret)
+			return ret;
+
+		fprintf(stdout, "Send completion received\n");
+	} else {
+		fprintf(stdout, "Waiting for message from client...\n");
+
+		ret = ft_get_rx_comp(rx_seq);
+		if (ret)
+			return ret;
+
+		fprintf(stdout, "Received data from client: %s\n", (char *)buf);
 	}
 
-	ret = fi_cq_sread(rxcq, &comp, 1, NULL, -1);
-	if (ret != 1) {
-		if (ret == -FI_EAVAIL)
-			ret = ft_cq_readerr(rxcq);
-		else
-			FT_PRINTERR("fi_cq_sread", ret);
-	}
-	return ret;
+	return 0;
 }
 
 static int run(void)
@@ -109,88 +127,57 @@ static int run(void)
 	if (ret)
 		return ret;
 
-	ret = ft_init_av();
-	if (ret)
-		return ret;
-
 	if (opts.dst_addr) {
-		printf("Searching for a bad msg\n");
-		ret = tagged_peek(0xbad);
-		if (ret != -FI_ENOMSG) {
-			FT_PRINTERR("FI_PEEK", ret);
-			return ret;
+		if (parent) {
+			/* parent inits AV and lets child proceed,
+			 * and itself returns without sending a message */
+			ret = ft_init_av();
+			if (ret)
+				return ret;
+			ret = write(pair[1], &ready, sizeof(int));
+			if (ret < 0)
+				FT_PRINTERR("write", errno);
+
+			return 0;
+		} else {
+			/* client: child waits for parent to complete av_insert */
+			ret = read(pair[0], &ready, sizeof(int));
+			if (ret < 0)
+				FT_PRINTERR("read", errno);
+
+			remote_fi_addr = ((fi_addr_t *)av_attr.map_addr)[0];
 		}
-
-		printf("Synchronizing with sender..\n");
-		ret = ft_sync();
-		if (ret)
-			return ret;
-
-		printf("Searching for a good msg\n");
-		ret = tagged_peek(0x900d);
-		if (ret != 1) {
-			FT_PRINTERR("FI_PEEK", ret);
-			return ret;
-		}
-
-		printf("Receiving msg\n");
-		ret = fi_trecv(ep, buf, rx_size, fi_mr_desc(mr), remote_fi_addr,
-				0x900d, 0, &rx_ctx);
-		if (ret) {
-			FT_PRINTERR("fi_trecv", ret);
-			return ret;
-		}
-
-		printf("Completing recv\n");
-		ret = ft_get_rx_comp(++rx_seq);
-		if (ret)
-			return ret;
-
 	} else {
-		printf("Sending tagged message\n");
-		ret = fi_tsend(ep, tx_buf, tx_size, fi_mr_desc(mr),
-				remote_fi_addr, 0x900d, &tx_ctx);
-		if (ret)
-			return ret;
-
-		printf("Synchronizing with receiver..\n");
-		ret = ft_sync();
-		if (ret)
-			return ret;
-
-		printf("Getting send completion\n");
-		ret = ft_get_tx_comp(tx_seq + 1);
+		ret = ft_init_av();
 		if (ret)
 			return ret;
 	}
 
-	ft_finalize();
-	return 0;
+	return send_recv();
 }
 
 int main(int argc, char **argv)
 {
-	int ret, op;
+	int op, ret;
+	pid_t child_pid = 0;
 
 	opts = INIT_OPTS;
 	opts.options |= FT_OPT_SIZE;
-	opts.comp_method = FT_COMP_SREAD;
 
 	hints = fi_allocinfo();
-	if (!hints) {
-		FT_PRINTERR("fi_allocinfo", -FI_ENOMEM);
+	if (!hints)
 		return EXIT_FAILURE;
-	}
 
 	while ((op = getopt(argc, argv, "h" ADDR_OPTS INFO_OPTS)) != -1) {
 		switch (op) {
 		default:
 			ft_parse_addr_opts(op, optarg, &opts);
 			ft_parseinfo(op, optarg, hints);
+			ft_parsecsopts(op, optarg, &opts);
 			break;
 		case '?':
 		case 'h':
-			ft_usage(argv[0], "An RDM client-server example that uses tagged search.\n");
+			ft_usage(argv[0], "A shared AV client-server example.");
 			return EXIT_FAILURE;
 		}
 	}
@@ -198,13 +185,38 @@ int main(int argc, char **argv)
 	if (optind < argc)
 		opts.dst_addr = argv[optind];
 
-	hints->rx_attr->total_buffered_recv = 1024;
-	hints->ep_attr->type = FI_EP_RDM;
-	hints->caps = FI_MSG | FI_TAGGED;
-	hints->mode = FI_CONTEXT | FI_LOCAL_MR;
+	if (opts.dst_addr) {
+		ret = socketpair(AF_LOCAL, SOCK_STREAM, 0, pair);
+		if (ret)
+			FT_PRINTERR("socketpair", errno);
+		child_pid = fork();
+		if (child_pid < 0)
+			FT_PRINTERR("fork", child_pid);
+		if (child_pid)
+			parent = 1;
+	}
+
+	hints->ep_attr->type	= FI_EP_RDM;
+	hints->caps		= FI_MSG;
+	hints->mode		= FI_CONTEXT | FI_LOCAL_MR;
 
 	ret = run();
 
+	if (opts.dst_addr) {
+		ret = close(pair[0]);
+		if (ret)
+			FT_PRINTERR("close", errno);
+		ret = close(pair[1]);
+		if (ret)
+			FT_PRINTERR("close", errno);
+		if (parent) {
+			if (waitpid(child_pid, NULL, WCONTINUED) < 0) {
+				FT_PRINTERR("waitpid", errno);
+			}
+		}
+	}
+
 	ft_free_res();
+
 	return -ret;
 }

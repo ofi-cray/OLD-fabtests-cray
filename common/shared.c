@@ -56,6 +56,7 @@ struct fid_mr *mr;
 struct fid_av *av;
 struct fid_eq *eq;
 
+struct fid_mr no_mr;
 struct fi_context tx_ctx, rx_ctx;
 
 uint64_t tx_seq, rx_seq, tx_cq_cntr, rx_cq_cntr;
@@ -229,11 +230,15 @@ int ft_alloc_msgs(void)
 	rx_buf = buf;
 	tx_buf = (char *) buf + MAX(rx_size, FT_MAX_CTRL_MSG);
 
-	ret = fi_mr_reg(domain, buf, buf_size, FI_RECV | FI_SEND,
-			0, 0, 0, &mr, NULL);
-	if (ret) {
-		FT_PRINTERR("fi_mr_reg", ret);
-		return ret;
+	if (fi->mode & FI_LOCAL_MR) {
+		ret = fi_mr_reg(domain, buf, buf_size, FI_RECV | FI_SEND,
+				0, 0, 0, &mr, NULL);
+		if (ret) {
+			FT_PRINTERR("fi_mr_reg", ret);
+			return ret;
+		}
+	} else {
+		mr = &no_mr;
 	}
 
 	return 0;
@@ -337,6 +342,9 @@ int ft_alloc_active_res(struct fi_info *fi)
 		if (fi->domain_attr->av_type != FI_AV_UNSPEC)
 			av_attr.type = fi->domain_attr->av_type;
 
+		if (opts.av_name) {
+			av_attr.name = opts.av_name;
+		}
 		ret = fi_av_open(domain, &av_attr, &av, NULL);
 		if (ret) {
 			FT_PRINTERR("fi_av_open", ret);
@@ -551,7 +559,8 @@ int ft_exchange_keys(struct fi_rma_iov *peer_iov)
 
 static void ft_close_fids(void)
 {
-	FT_CLOSE_FID(mr);
+	if (mr != &no_mr)
+		FT_CLOSE_FID(mr);
 	FT_CLOSE_FID(ep);
 	FT_CLOSE_FID(pep);
 	FT_CLOSE_FID(rxcq);
@@ -1145,6 +1154,7 @@ void ft_usage(char *name, char *desc)
 	FT_PRINT_OPTS_USAGE("-p <dst_port>", "non default destination port number");
 	FT_PRINT_OPTS_USAGE("-f <provider>", "specific provider name eg sockets, verbs");
 	FT_PRINT_OPTS_USAGE("-s <address>", "source address");
+	FT_PRINT_OPTS_USAGE("-a <address vector name>", "name of address vector");
 	FT_PRINT_OPTS_USAGE("-h", "display this help output");
 
 	return;
@@ -1254,6 +1264,8 @@ void ft_parsecsopts(int op, char *optarg, struct ft_opts *opts)
 			opts->options |= FT_OPT_RX_CNTR | FT_OPT_TX_CNTR;
 			opts->options &= ~(FT_OPT_RX_CQ | FT_OPT_TX_CQ);
 		}
+	case 'a':
+		opts->av_name = optarg;
 		break;
 	default:
 		/* let getopt handle unknown opts*/
