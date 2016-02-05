@@ -1,4 +1,5 @@
-AM_CFLAGS = -g -Wall -D_GNU_SOURCE -I$(srcdir)/include
+configdir = $(datarootdir)/${PACKAGE_NAME}
+AM_CFLAGS = -g -Wall -D_GNU_SOURCE -D 'CONFIG_PATH="${configdir}"' -I$(srcdir)/include
 ACLOCAL_AMFLAGS = -I config
 
 bin_PROGRAMS = \
@@ -50,6 +51,12 @@ dist_bin_SCRIPTS += \
 	scripts/run_client_server.py \
 	scripts/cray_runall_expected_failures \
 	scripts/cray_runall_intermittent_failures
+
+nobase_dist_config_DATA = \
+	test_configs/*.test \
+	test_configs/sockets/*.test \
+	test_configs/udp/*.test \
+	test_configs/verbs/*.test
 
 noinst_LTLIBRARIES = libfabtests.la
 libfabtests_la_SOURCES = \
