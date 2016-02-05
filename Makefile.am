@@ -1,6 +1,7 @@
 configdir = $(datarootdir)/${PACKAGE_NAME}
 AM_CFLAGS = -g -Wall -D_GNU_SOURCE -D 'CONFIG_PATH="${configdir}"' -I$(srcdir)/include
 ACLOCAL_AMFLAGS = -I config
+SUBDIRS = osu
 
 bin_PROGRAMS = \
 	simple/fi_msg \
