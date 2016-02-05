@@ -1,5 +1,4 @@
 # expected failures, one per line
-fi_eq_test
 fi_size_left_test
 fi_msg_pingpong
 fi_ud_pingpong
