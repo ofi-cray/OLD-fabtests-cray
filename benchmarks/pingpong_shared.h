@@ -40,12 +40,12 @@ extern "C" {
 
 #include <stdbool.h>
 
-#define PONG_OPTS "vP"
+#define PONG_OPTS "vPj:"
+#define FT_PINGPONG_MAX_MSG_SIZE (test_size[TEST_CNT - 1].size)
 
-void ft_parsepongopts(int op);
+void ft_parsepongopts(int op, char *optarg);
 void ft_pongusage(void);
 int pingpong();
-
 
 #ifdef __cplusplus
 }

@@ -32,6 +32,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 #include <sys/time.h>
 
 #include <rdma/fi_cm.h>
@@ -89,29 +90,29 @@ struct fi_cntr_attr cntr_attr = {
 struct ft_opts opts;
 
 struct test_size_param test_size[] = {
-	{ 1 <<  1, 1 }, { (1 <<  1) + (1 <<  0), 2},
-	{ 1 <<  2, 2 }, { (1 <<  2) + (1 <<  1), 2},
-	{ 1 <<  3, 1 }, { (1 <<  3) + (1 <<  2), 2},
-	{ 1 <<  4, 2 }, { (1 <<  4) + (1 <<  3), 2},
-	{ 1 <<  5, 1 }, { (1 <<  5) + (1 <<  4), 2},
-	{ 1 <<  6, 0 }, { (1 <<  6) + (1 <<  5), 0},
-	{ 1 <<  7, 1 }, { (1 <<  7) + (1 <<  6), 0},
-	{ 1 <<  8, 1 }, { (1 <<  8) + (1 <<  7), 1},
-	{ 1 <<  9, 1 }, { (1 <<  9) + (1 <<  8), 1},
-	{ 1 << 10, 1 }, { (1 << 10) + (1 <<  9), 1},
-	{ 1 << 11, 1 }, { (1 << 11) + (1 << 10), 1},
-	{ 1 << 12, 0 }, { (1 << 12) + (1 << 11), 1},
-	{ 1 << 13, 1 }, { (1 << 13) + (1 << 12), 1},
-	{ 1 << 14, 1 }, { (1 << 14) + (1 << 13), 1},
-	{ 1 << 15, 1 }, { (1 << 15) + (1 << 14), 1},
-	{ 1 << 16, 0 }, { (1 << 16) + (1 << 15), 1},
-	{ 1 << 17, 1 }, { (1 << 17) + (1 << 16), 1},
-	{ 1 << 18, 1 }, { (1 << 18) + (1 << 17), 1},
-	{ 1 << 19, 1 }, { (1 << 19) + (1 << 18), 1},
-	{ 1 << 20, 0 }, { (1 << 20) + (1 << 19), 1},
-	{ 1 << 21, 1 }, { (1 << 21) + (1 << 20), 1},
-	{ 1 << 22, 1 }, { (1 << 22) + (1 << 21), 1},
-	{ 1 << 23, 1 },
+	{ 1 <<  1, 0 }, { (1 <<  1) + (1 <<  0), 0 },
+	{ 1 <<  2, 0 }, { (1 <<  2) + (1 <<  1), 0 },
+	{ 1 <<  3, 0 }, { (1 <<  3) + (1 <<  2), 0 },
+	{ 1 <<  4, 0 }, { (1 <<  4) + (1 <<  3), 0 },
+	{ 1 <<  5, 0 }, { (1 <<  5) + (1 <<  4), 0 },
+	{ 1 <<  6, FT_DEFAULT_SIZE }, { (1 <<  6) + (1 <<  5), 0 },
+	{ 1 <<  7, 0 }, { (1 <<  7) + (1 <<  6), 0 },
+	{ 1 <<  8, FT_DEFAULT_SIZE }, { (1 <<  8) + (1 <<  7), 0 },
+	{ 1 <<  9, 0 }, { (1 <<  9) + (1 <<  8), 0 },
+	{ 1 << 10, FT_DEFAULT_SIZE }, { (1 << 10) + (1 <<  9), 0 },
+	{ 1 << 11, 0 }, { (1 << 11) + (1 << 10), 0 },
+	{ 1 << 12, FT_DEFAULT_SIZE }, { (1 << 12) + (1 << 11), 0 },
+	{ 1 << 13, 0 }, { (1 << 13) + (1 << 12), 0 },
+	{ 1 << 14, 0 }, { (1 << 14) + (1 << 13), 0 },
+	{ 1 << 15, 0 }, { (1 << 15) + (1 << 14), 0 },
+	{ 1 << 16, FT_DEFAULT_SIZE }, { (1 << 16) + (1 << 15), 0 },
+	{ 1 << 17, 0 }, { (1 << 17) + (1 << 16), 0 },
+	{ 1 << 18, 0 }, { (1 << 18) + (1 << 17), 0 },
+	{ 1 << 19, 0 }, { (1 << 19) + (1 << 18), 0 },
+	{ 1 << 20, FT_DEFAULT_SIZE }, { (1 << 20) + (1 << 19), 0 },
+	{ 1 << 21, 0 }, { (1 << 21) + (1 << 20), 0 },
+	{ 1 << 22, 0 }, { (1 << 22) + (1 << 21), 0 },
+	{ 1 << 23, 0 },
 };
 
 const unsigned int test_cnt = (sizeof test_size / sizeof test_size[0]);
@@ -208,6 +209,7 @@ static void ft_cntr_set_wait_attr(void)
 int ft_alloc_msgs(void)
 {
 	int ret;
+	long alignment = 1;
 
 	/* TODO: support multi-recv tests */
 	if (fi->rx_attr->op_flags == FI_MULTI_RECV)
@@ -221,14 +223,29 @@ int ft_alloc_msgs(void)
 	tx_size += ft_tx_prefix_size();
 	buf_size = MAX(tx_size, FT_MAX_CTRL_MSG) + MAX(rx_size, FT_MAX_CTRL_MSG);
 
-	buf = malloc(buf_size);
-	if (!buf) {
-		perror("malloc");
-		return -FI_ENOMEM;
-	}
+	if (opts.options & FT_OPT_ALIGN) {
+		alignment = sysconf(_SC_PAGESIZE);
+		if (alignment < 0)
+			return -errno;
+		buf_size += alignment;
 
+		ret = posix_memalign(&buf, (size_t) alignment, buf_size);
+		if (ret) {
+			FT_PRINTERR("posix_memalign", ret);
+			return ret;
+		}
+	} else {
+		buf = malloc(buf_size);
+		if (!buf) {
+			perror("malloc");
+			return -FI_ENOMEM;
+		}
+	}
+	memset(buf, 0, buf_size);
 	rx_buf = buf;
 	tx_buf = (char *) buf + MAX(rx_size, FT_MAX_CTRL_MSG);
+	tx_buf = (void *) (((uintptr_t) tx_buf + alignment - 1) &
+			   ~(alignment - 1));
 
 	if (fi->mode & FI_LOCAL_MR) {
 		ret = fi_mr_reg(domain, buf, buf_size, FI_RECV | FI_SEND,
@@ -776,6 +793,41 @@ ssize_t ft_tx(size_t size)
 	return ret;
 }
 
+ssize_t ft_post_inject(size_t size)
+{
+	ssize_t ret;
+
+	if (hints->caps & FI_TAGGED) {
+		ret = fi_tinject(ep, tx_buf, size + ft_tx_prefix_size(),
+				remote_fi_addr, tx_seq);
+	} else {
+		ret = fi_inject(ep, tx_buf, size + ft_tx_prefix_size(),
+				remote_fi_addr);
+	}
+	if (ret) {
+		FT_PRINTERR("transmit", ret);
+		return ret;
+	}
+
+	tx_seq++;
+	tx_cq_cntr++;
+	return 0;
+}
+
+ssize_t ft_inject(size_t size)
+{
+	ssize_t ret;
+
+	if (ft_check_opts(FT_OPT_VERIFY_DATA | FT_OPT_ACTIVE))
+		ft_fill_buf((char *) tx_buf + ft_tx_prefix_size(), size);
+
+	ret = ft_post_inject(size);
+	if (ret)
+		return ret;
+
+	return ret;
+}
+
 ssize_t ft_post_rx(size_t size)
 {
 	ssize_t ret;
@@ -1019,9 +1071,9 @@ int ft_finalize(void)
 	struct iovec iov;
 	int ret;
 
-	strcpy(tx_buf, "fin");
+	strcpy(tx_buf + ft_tx_prefix_size(), "fin");
 	iov.iov_base = tx_buf;
-	iov.iov_len = 4;
+	iov.iov_len = 4 + ft_tx_prefix_size();
 
 	if (hints->caps & FI_TAGGED) {
 		struct fi_msg_tagged tmsg;
@@ -1079,13 +1131,21 @@ void show_perf(char *name, int tsize, int iters, struct timespec *start,
 	int64_t elapsed = get_elapsed(start, end, MICRO);
 	long long bytes = (long long) iters * tsize * xfers_per_iter;
 
-	if (header) {
-		printf("%-50s%-8s%-8s%-8s%8s %10s%13s\n",
-			"name", "bytes", "iters", "total", "time", "Gb/sec", "usec/xfer");
-		header = 0;
-	}
+	if (name) {
+		if (header) {
+			printf("%-50s%-8s%-8s%-8s%8s %10s%13s\n",
+					"name", "bytes", "iters", "total", "time", "Gb/sec", "usec/xfer");
+			header = 0;
+		}
 
-	printf("%-50s", name);
+		printf("%-50s", name);
+	} else {
+		if (header) {
+			printf("%-8s%-8s%-8s%8s %10s%13s\n",
+					"bytes", "iters", "total", "time", "Gb/sec", "usec/xfer");
+			header = 0;
+		}
+	}
 
 	printf("%-8s", size_str(str, tsize));
 
@@ -1176,7 +1236,9 @@ void ft_csusage(char *name, char *desc)
 	FT_PRINT_OPTS_USAGE("-f <provider>", "specific provider name eg sockets, verbs");
 	FT_PRINT_OPTS_USAGE("-s <address>", "source address");
 	FT_PRINT_OPTS_USAGE("-I <number>", "number of iterations");
+	FT_PRINT_OPTS_USAGE("-w <number>", "number of warmup iterations");
 	FT_PRINT_OPTS_USAGE("-S <size>", "specific transfer size or 'all'");
+	FT_PRINT_OPTS_USAGE("-l", "align transmit and receive buffers to page size");
 	FT_PRINT_OPTS_USAGE("-m", "machine readable output");
 	FT_PRINT_OPTS_USAGE("-t <type>", "completion type [queue, counter]");
 	FT_PRINT_OPTS_USAGE("-c <method>", "completion method [spin, sread, fd]");
@@ -1244,7 +1306,7 @@ void ft_parsecsopts(int op, char *optarg, struct ft_opts *opts)
 		break;
 	case 'S':
 		if (!strncasecmp("all", optarg, 3)) {
-			opts->size_option = 1;
+			opts->sizes_enabled = FT_ENABLE_ALL;
 		} else {
 			opts->options |= FT_OPT_SIZE;
 			opts->transfer_size = atoi(optarg);
@@ -1267,6 +1329,12 @@ void ft_parsecsopts(int op, char *optarg, struct ft_opts *opts)
 		break;
 	case 'a':
 		opts->av_name = optarg;
+		break;
+	case 'w':
+		opts->warmup_iterations = atoi(optarg);
+		break;
+	case 'l':
+		opts->options |= FT_OPT_ALIGN;
 		break;
 	default:
 		/* let getopt handle unknown opts*/

@@ -21,12 +21,11 @@ bin_PROGRAMS = \
 	streaming/fi_rdm_atomic \
 	streaming/fi_rdm_multi_recv \
 	streaming/fi_rdm_rma \
-	pingpong/fi_msg_pingpong \
-	pingpong/fi_rdm_inject_pingpong \
-	pingpong/fi_rdm_cntr_pingpong \
-	pingpong/fi_ud_pingpong \
-	pingpong/fi_rdm_pingpong \
-	pingpong/fi_rdm_tagged_pingpong \
+	benchmarks/fi_msg_pingpong \
+	benchmarks/fi_rdm_cntr_pingpong \
+	benchmarks/fi_ud_pingpong \
+	benchmarks/fi_rdm_pingpong \
+	benchmarks/fi_rdm_tagged_pingpong \
 	unit/fi_eq_test \
 	unit/fi_av_test \
 	unit/fi_av_test2 \
@@ -53,10 +52,16 @@ dist_bin_SCRIPTS += \
 	scripts/cray_runall_intermittent_failures
 
 nobase_dist_config_DATA = \
-	test_configs/*.test \
-	test_configs/sockets/*.test \
-	test_configs/udp/*.test \
-	test_configs/verbs/*.test
+        test_configs/eq_cq.test \
+        test_configs/lat_bw.test \
+        test_configs/sockets/all.test \
+        test_configs/sockets/quick.test \
+        test_configs/udp/all.test \
+        test_configs/udp/lat_bw.test \
+        test_configs/udp/quick.test \
+        test_configs/udp/simple.test \
+        test_configs/verbs/all.test \
+        test_configs/verbs/quick.test
 
 noinst_LTLIBRARIES = libfabtests.la
 libfabtests_la_SOURCES = \
@@ -140,41 +145,35 @@ streaming_fi_rdm_rma_SOURCES = \
 	streaming/rdm_rma.c
 streaming_fi_rdm_rma_LDADD = libfabtests.la
 
-pingpong_fi_msg_pingpong_SOURCES = \
-	pingpong/msg_pingpong.c \
-	pingpong/pingpong_shared.h \
-	pingpong/pingpong_shared.c
-pingpong_fi_msg_pingpong_LDADD = libfabtests.la
+benchmarks_fi_msg_pingpong_SOURCES = \
+	benchmarks/msg_pingpong.c \
+	benchmarks/pingpong_shared.h \
+	benchmarks/pingpong_shared.c
+benchmarks_fi_msg_pingpong_LDADD = libfabtests.la
 
-pingpong_fi_ud_pingpong_SOURCES = \
-	pingpong/ud_pingpong.c \
-	pingpong/pingpong_shared.h \
-	pingpong/pingpong_shared.c
-pingpong_fi_ud_pingpong_LDADD = libfabtests.la
+benchmarks_fi_ud_pingpong_SOURCES = \
+	benchmarks/ud_pingpong.c \
+	benchmarks/pingpong_shared.h \
+	benchmarks/pingpong_shared.c
+benchmarks_fi_ud_pingpong_LDADD = libfabtests.la
 
-pingpong_fi_rdm_cntr_pingpong_SOURCES = \
-	pingpong/rdm_cntr_pingpong.c \
-	pingpong/pingpong_shared.h \
-	pingpong/pingpong_shared.c
-pingpong_fi_rdm_cntr_pingpong_LDADD = libfabtests.la
+benchmarks_fi_rdm_cntr_pingpong_SOURCES = \
+	benchmarks/rdm_cntr_pingpong.c \
+	benchmarks/pingpong_shared.h \
+	benchmarks/pingpong_shared.c
+benchmarks_fi_rdm_cntr_pingpong_LDADD = libfabtests.la
 
-pingpong_fi_rdm_pingpong_SOURCES = \
-	pingpong/rdm_pingpong.c \
-	pingpong/pingpong_shared.h \
-	pingpong/pingpong_shared.c
-pingpong_fi_rdm_pingpong_LDADD = libfabtests.la
+benchmarks_fi_rdm_pingpong_SOURCES = \
+	benchmarks/rdm_pingpong.c \
+	benchmarks/pingpong_shared.h \
+	benchmarks/pingpong_shared.c
+benchmarks_fi_rdm_pingpong_LDADD = libfabtests.la
 
-pingpong_fi_rdm_tagged_pingpong_SOURCES = \
-	pingpong/rdm_tagged_pingpong.c \
-	pingpong/pingpong_shared.h \
-	pingpong/pingpong_shared.c
-pingpong_fi_rdm_tagged_pingpong_LDADD = libfabtests.la
-
-pingpong_fi_rdm_inject_pingpong_SOURCES = \
-	pingpong/rdm_inject_pingpong.c \
-	pingpong/pingpong_shared.h \
-	pingpong/pingpong_shared.c
-pingpong_fi_rdm_inject_pingpong_LDADD = libfabtests.la
+benchmarks_fi_rdm_tagged_pingpong_SOURCES = \
+	benchmarks/rdm_tagged_pingpong.c \
+	benchmarks/pingpong_shared.h \
+	benchmarks/pingpong_shared.c
+benchmarks_fi_rdm_tagged_pingpong_LDADD = libfabtests.la
 
 
 unit_fi_eq_test_SOURCES = \
@@ -288,3 +287,4 @@ endif
 
 test:
 	./scripts/runfabtests.sh -vvv
+	./scripts/runfabtests.sh -vvv udp
