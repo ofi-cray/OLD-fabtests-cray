@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2013-2015 Intel Corporation.  All rights reserved.
+ * Copyright (c) 2016, Cisco Systems, Inc. All rights reserved.
  *
  * This software is available to you under the BSD license
  * below:
@@ -43,7 +44,7 @@
 
 static int parent;
 static int pair[2];
-static int ready;
+static int status;
 
 static int init_fabric(void)
 {
@@ -68,29 +69,31 @@ static int init_fabric(void)
 
 	if (opts.dst_addr && !parent) {
 		/* child waits until parent is done creating AV */
-		ret = read(pair[0], &ready, sizeof(int));
+		ret = read(pair[0], &status, sizeof(int));
 		if (ret < 0)
 			FT_PRINTERR("read", errno);
+
+		if (status != FI_SUCCESS)
+			return status;
 
 		/* child needs to open AV in read only mode */
 		av_attr.flags = FI_READ;
 	}
 	ret = ft_alloc_active_res(fi);
-	if (ret)
-		return ret;
 
 	if (opts.dst_addr && parent) {
-		/* parent lets child know that AV is created */
-		ret = write(pair[1], &ready, sizeof(int));
-		if (ret < 0)
+		/* parent lets the child know the return status of opening the
+		 * AV
+		 */
+		if (write(pair[1], &ret, sizeof(int)) < 0)
 			FT_PRINTERR("write", errno);
 	}
 
-	ret = ft_init_ep();
+	/* handle the failed alloc_active_res call */
 	if (ret)
 		return ret;
 
-	return 0;
+	return ft_init_ep();
 }
 
 static int send_recv()
@@ -132,18 +135,21 @@ static int run(void)
 			/* parent inits AV and lets child proceed,
 			 * and itself returns without sending a message */
 			ret = ft_init_av();
-			if (ret)
-				return ret;
-			ret = write(pair[1], &ready, sizeof(int));
-			if (ret < 0)
+
+			/* write init status to file */
+			if (write(pair[1], &ret, sizeof(int)) < 0)
 				FT_PRINTERR("write", errno);
 
-			return 0;
+			return ret;
 		} else {
 			/* client: child waits for parent to complete av_insert */
-			ret = read(pair[0], &ready, sizeof(int));
+			ret = read(pair[0], &status, sizeof(int));
 			if (ret < 0)
 				FT_PRINTERR("read", errno);
+
+			/* check status reported by parent */
+			if (status != FI_SUCCESS)
+				return status;
 
 			remote_fi_addr = ((fi_addr_t *)av_attr.map_addr)[0];
 		}
@@ -194,6 +200,9 @@ int main(int argc, char **argv)
 			FT_PRINTERR("fork", child_pid);
 		if (child_pid)
 			parent = 1;
+
+		if (!opts.av_name)
+			opts.av_name = "foo";
 	}
 
 	hints->ep_attr->type	= FI_EP_RDM;
@@ -203,11 +212,9 @@ int main(int argc, char **argv)
 	ret = run();
 
 	if (opts.dst_addr) {
-		ret = close(pair[0]);
-		if (ret)
+		if (close(pair[0]))
 			FT_PRINTERR("close", errno);
-		ret = close(pair[1]);
-		if (ret)
+		if (close(pair[1]))
 			FT_PRINTERR("close", errno);
 		if (parent) {
 			if (waitpid(child_pid, NULL, WCONTINUED) < 0) {
