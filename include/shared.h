@@ -107,6 +107,7 @@ struct ft_opts {
 	int iterations;
 	int warmup_iterations;
 	int transfer_size;
+	int window_size;
 	char *src_port;
 	char *dst_port;
 	char *src_addr;
@@ -151,7 +152,6 @@ extern char test_name[50];
 extern struct timespec start, end;
 extern struct ft_opts opts;
 
-
 void ft_parseinfo(int op, char *optarg, struct fi_info *hints);
 void ft_parse_addr_opts(int op, char *optarg, struct ft_opts *opts);
 void ft_parsecsopts(int op, char *optarg, struct ft_opts *opts);
@@ -161,6 +161,9 @@ void ft_csusage(char *name, char *desc);
 void ft_fill_buf(void *buf, int size);
 int ft_check_buf(void *buf, int size);
 uint64_t ft_init_cq_data(struct fi_info *info);
+extern int ft_skip_mr;
+extern int ft_parent_proc;
+extern int ft_socket_pair[2];
 #define ADDR_OPTS "b:p:s:a:"
 #define INFO_OPTS "n:f:"
 #define CS_OPTS ADDR_OPTS "I:S:mc:t:w:l"
@@ -172,6 +175,7 @@ extern char default_port[8];
 		.iterations = 1000, \
 		.warmup_iterations = 10, \
 		.transfer_size = 1024, \
+		.window_size = 64, \
 		.sizes_enabled = FT_DEFAULT_SIZE, \
 		.argc = argc, .argv = argv \
 	}
@@ -179,6 +183,8 @@ extern char default_port[8];
 #define FT_STR_LEN 32
 #define FT_MAX_CTRL_MSG 64
 #define FT_MR_KEY 0xC0DE
+#define FT_MSG_MR_ACCESS (FI_SEND | FI_RECV)
+#define FT_RMA_MR_ACCESS (FI_READ | FI_WRITE | FI_REMOTE_READ | FI_REMOTE_WRITE)
 
 int ft_getsrcaddr(char *node, char *service, struct fi_info *hints);
 int ft_read_addr_opts(char **node, char **service, struct fi_info *hints,
@@ -189,11 +195,23 @@ int size_to_count(int size);
 
 
 #define FT_PRINTERR(call, retv) \
-	do { fprintf(stderr, call "(): %s:%d, ret=%d (%s)\n", __FILE__, __LINE__, (int) retv, fi_strerror((int) -retv)); } while (0)
+	do { fprintf(stderr, call "(): %s:%d, ret=%d (%s)\n", __FILE__, __LINE__, \
+			(int) retv, fi_strerror((int) -retv)); } while (0)
 
-#define FT_ERR(fmt, ...) \
-	do { fprintf(stderr, "%s:%d: " fmt, __FILE__, __LINE__, ##__VA_ARGS__); } while (0)
+#define FT_LOG(level, fmt, ...) \
+	do { fprintf(stderr, "[%s] fabtests:%s:%d: " fmt "\n", level, __FILE__, \
+			__LINE__, ##__VA_ARGS__); } while (0)
 
+#define FT_ERR(fmt, ...) FT_LOG("error", fmt, ##__VA_ARGS__)
+#define FT_WARN(fmt, ...) FT_LOG("warn", fmt, ##__VA_ARGS__)
+
+#define FT_EQ_ERR(eq, entry, buf, len) \
+	FT_ERR("eq_readerr: %s", fi_eq_strerror(eq, entry.prov_errno, \
+				entry.err_data, buf, len))
+
+#define FT_CQ_ERR(cq, entry, buf, len) \
+	FT_ERR("cq_readerr: %s", fi_cq_strerror(cq, entry.prov_errno, \
+				entry.err_data, buf, len))
 
 #define FT_CLOSE_FID(fd)					\
 	do {							\
@@ -201,7 +219,7 @@ int size_to_count(int size);
 		if ((fd)) {					\
 			ret = fi_close(&(fd)->fid);		\
 			if (ret)				\
-				FT_ERR("fi_close (%d) fid %d\n",	\
+				FT_ERR("fi_close (%d) fid %d",	\
 					ret, (int) (fd)->fid.fclass);	\
 			fd = NULL;				\
 		}						\
@@ -240,6 +258,9 @@ static inline void ft_stop(void)
 	opts.options &= ~FT_OPT_ACTIVE;
 }
 int ft_sync();
+int ft_sync_pair(int status);
+int ft_fork_and_pair();
+int ft_wait_child();
 int ft_finalize();
 
 size_t ft_rx_prefix_size();

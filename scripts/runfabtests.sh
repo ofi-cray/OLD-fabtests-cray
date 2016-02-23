@@ -112,6 +112,7 @@ short_tests=(
 	"rdm_rma -o read -I 5"
 	"rdm_rma -o writedata -I 5"
 	"rdm_tagged_pingpong -I 5"
+	"rdm_tagged_bw -I 5"
 	"ud_pingpong -I 5"
 	"rc_pingpong -n 5"
 	"rc_pingpong -n 5 -e"
@@ -136,6 +137,7 @@ standard_tests=(
 	"rdm_rma -o read"
 	"rdm_rma -o writedata"
 	"rdm_tagged_pingpong"
+	"rdm_tagged_bw"
 	"ud_pingpong"
 	"ud_pingpong -v"
 	"ud_pingpong -P"
@@ -295,7 +297,7 @@ function cs_test {
 
 	${SERVER_CMD} "${BIN_PATH}${test_exe} -s $S_INTERFACE" &> $s_outp &
 	p1=$!
-	sleep 1s
+	sleep 1
 
 	${CLIENT_CMD} "${BIN_PATH}${test_exe} -s $C_INTERFACE $S_INTERFACE" &> $c_outp &
 	p2=$!
@@ -337,7 +339,7 @@ function complex_test {
 
 	${SERVER_CMD} "${BIN_PATH}${test_exe} -s $S_INTERFACE -x" &> $s_outp &
 	p1=$!
-	sleep 1s
+	sleep 1
 
 	${CLIENT_CMD} "${BIN_PATH}${test_exe} -s $C_INTERFACE $S_INTERFACE -f ${PROV} -t $config" &> $c_outp &
 	p2=$!

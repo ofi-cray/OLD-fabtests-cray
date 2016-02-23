@@ -34,6 +34,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <sys/wait.h>
 
 #include <rdma/fi_cm.h>
 #include <rdma/fi_domain.h>
@@ -61,6 +62,10 @@ struct fid_mr no_mr;
 struct fi_context tx_ctx, rx_ctx;
 
 uint64_t tx_seq, rx_seq, tx_cq_cntr, rx_cq_cntr;
+int ft_skip_mr = 0;
+int ft_parent_proc = 0;
+pid_t ft_child_pid = 0;
+int ft_socket_pair[2];
 
 fi_addr_t remote_fi_addr = FI_ADDR_UNSPEC;
 void *buf, *tx_buf, *rx_buf;
@@ -201,6 +206,27 @@ static void ft_cntr_set_wait_attr(void)
 	}
 }
 
+static uint64_t ft_caps_to_mr_access(uint64_t caps)
+{
+	uint64_t mr_access = 0;
+
+	if (caps & FI_MSG) {
+		if (caps & FT_MSG_MR_ACCESS)
+			mr_access |= caps & FT_MSG_MR_ACCESS;
+		else
+			mr_access |= FT_MSG_MR_ACCESS;
+	}
+
+	if ((caps & FI_RMA) || (caps & FI_ATOMIC)) {
+		if (caps & FT_RMA_MR_ACCESS)
+			mr_access |= caps & FT_RMA_MR_ACCESS;
+		else
+			mr_access |= FT_RMA_MR_ACCESS;
+	}
+
+	return mr_access;
+}
+
 /*
  * Include FI_MSG_PREFIX space in the allocated buffer, and ensure that the
  * buffer is large enough for a control message used to exchange addressing
@@ -247,9 +273,10 @@ int ft_alloc_msgs(void)
 	tx_buf = (void *) (((uintptr_t) tx_buf + alignment - 1) &
 			   ~(alignment - 1));
 
-	if (fi->mode & FI_LOCAL_MR) {
-		ret = fi_mr_reg(domain, buf, buf_size, FI_RECV | FI_SEND,
-				0, 0, 0, &mr, NULL);
+	if (!ft_skip_mr && ((fi->mode & FI_LOCAL_MR) ||
+				(fi->caps & (FI_RMA | FI_ATOMIC)))) {
+		ret = fi_mr_reg(domain, buf, buf_size, ft_caps_to_mr_access(fi->caps),
+				0, FT_MR_KEY, 0, &mr, NULL);
 		if (ret) {
 			FT_PRINTERR("fi_mr_reg", ret);
 			return ret;
@@ -615,7 +642,7 @@ static int dupaddr(void **dst_addr, size_t *dst_addrlen,
 {
 	*dst_addr = malloc(src_addrlen);
 	if (!*dst_addr) {
-		FT_ERR("address allocation failed\n");
+		FT_ERR("address allocation failed");
 		return EAI_MEMORY;
 	}
 	*dst_addrlen = src_addrlen;
@@ -980,7 +1007,7 @@ int ft_get_rx_comp(uint64_t total)
 
 	if (rxcq) {
 		ret = ft_get_cq_comp(rxcq, &rx_cq_cntr, total, timeout);
-	} else {
+	} else if (rxcntr) {
 		while (fi_cntr_read(rxcntr) < total) {
 			ret = fi_cntr_wait(rxcntr, total, timeout);
 			if (ret)
@@ -988,6 +1015,9 @@ int ft_get_rx_comp(uint64_t total)
 			else
 				break;
 		}
+	} else {
+		FT_ERR("Trying to get a RX completion when no RX CQ or counter were opened");
+		ret = -FI_EOTHER;
 	}
 	return ret;
 }
@@ -998,10 +1028,13 @@ int ft_get_tx_comp(uint64_t total)
 
 	if (txcq) {
 		ret = ft_get_cq_comp(txcq, &tx_cq_cntr, total, -1);
-	} else {
+	} else if (txcntr) {
 		ret = fi_cntr_wait(txcntr, total, -1);
 		if (ret)
 			FT_PRINTERR("fi_cntr_wait", ret);
+	} else {
+		FT_ERR("Trying to get a TX completion when no TX CQ or counter were opened");
+		ret = -FI_EOTHER;
 	}
 	return ret;
 }
@@ -1009,17 +1042,13 @@ int ft_get_tx_comp(uint64_t total)
 int ft_cq_readerr(struct fid_cq *cq)
 {
 	struct fi_cq_err_entry cq_err;
-	const char *err_str;
 	int ret;
 
 	ret = fi_cq_readerr(cq, &cq_err, 0);
 	if (ret < 0) {
 		FT_PRINTERR("fi_cq_readerr", ret);
 	} else {
-		err_str = fi_cq_strerror(cq, cq_err.prov_errno, cq_err.err_data,
-					NULL, 0);
-		fprintf(stderr, "Completion error: %d(%s) - %s\n", cq_err.err,
-			fi_strerror(cq_err.err), err_str);
+		FT_CQ_ERR(cq, cq_err, NULL, 0);
 		ret = -cq_err.err;
 	}
 	return ret;
@@ -1028,18 +1057,13 @@ int ft_cq_readerr(struct fid_cq *cq)
 void eq_readerr(struct fid_eq *eq, const char *eq_str)
 {
 	struct fi_eq_err_entry eq_err;
-	const char *err_str;
 	int rd;
 
 	rd = fi_eq_readerr(eq, &eq_err, 0);
 	if (rd != sizeof(eq_err)) {
 		FT_PRINTERR("fi_eq_readerr", rd);
 	} else {
-		err_str = fi_eq_strerror(eq, eq_err.prov_errno, eq_err.err_data, NULL, 0);
-		fprintf(stderr, "%s: %d %s\n", eq_str, eq_err.err,
-				fi_strerror(eq_err.err));
-		fprintf(stderr, "%s: prov_err: %s (%d)\n", eq_str, err_str,
-				eq_err.prov_errno);
+		FT_EQ_ERR(eq, eq_err, NULL, 0);
 	}
 }
 
@@ -1062,6 +1086,88 @@ int ft_sync()
 	}
 
 	return ret;
+}
+
+int ft_sync_pair(int status)
+{
+	int ret;
+	int pair_status;
+
+	if (ft_parent_proc) {
+		ret = write(ft_socket_pair[1], &status, sizeof(int));
+		if (ret < 0) {
+			FT_PRINTERR("write", errno);
+			return ret;
+		}
+		ret = read(ft_socket_pair[1], &pair_status, sizeof(int));
+		if (ret < 0) {
+			FT_PRINTERR("read", errno);
+			return ret;
+		}
+	} else {
+		ret = read(ft_socket_pair[0], &pair_status, sizeof(int));
+		if (ret < 0) {
+			FT_PRINTERR("read", errno);
+			return ret;
+		}
+		ret = write(ft_socket_pair[0], &status, sizeof(int));
+		if (ret < 0) {
+			FT_PRINTERR("write", errno);
+			return ret;
+		}
+	}
+
+	/* check status reported the other guy */
+	if (pair_status != FI_SUCCESS)
+		return pair_status;
+
+	return 0;
+}
+
+int ft_fork_and_pair()
+{
+	int ret;
+
+	ret = socketpair(AF_LOCAL, SOCK_STREAM, 0, ft_socket_pair);
+	if (ret) {
+		FT_PRINTERR("socketpair", errno);
+		return -errno;
+	}
+
+	ft_child_pid = fork();
+	if (ft_child_pid < 0) {
+		FT_PRINTERR("fork", ft_child_pid);
+		return -errno;
+	}
+	if (ft_child_pid)
+		ft_parent_proc = 1;
+
+	return 0;
+}
+
+int ft_wait_child()
+{
+	int ret;
+
+	ret = close(ft_socket_pair[0]);
+	if (ret) {
+		FT_PRINTERR("close", errno);
+		return ret;
+	}
+	ret = close(ft_socket_pair[1]);
+	if (ret) {
+		FT_PRINTERR("close", errno);
+		return ret;
+	}
+	if (ft_parent_proc) {
+		ret = waitpid(ft_child_pid, NULL, WCONTINUED);
+		if (ret < 0) {
+			FT_PRINTERR("waitpid", errno);
+			return ret;
+		}
+	}
+
+	return 0;
 }
 
 int ft_finalize(void)
@@ -1128,19 +1234,24 @@ void show_perf(char *name, int tsize, int iters, struct timespec *start,
 	char str[FT_STR_LEN];
 	int64_t elapsed = get_elapsed(start, end, MICRO);
 	long long bytes = (long long) iters * tsize * xfers_per_iter;
+	float usec_per_xfer;
 
 	if (name) {
 		if (header) {
-			printf("%-50s%-8s%-8s%-8s%8s %10s%13s\n",
-					"name", "bytes", "iters", "total", "time", "MB/sec", "usec/xfer");
+			printf("%-50s%-8s%-8s%-8s%8s %10s%13s%13s\n",
+					"name", "bytes", "iters",
+					"total", "time", "MB/sec",
+					"usec/xfer", "Mxfers/sec");
 			header = 0;
 		}
 
 		printf("%-50s", name);
 	} else {
 		if (header) {
-			printf("%-8s%-8s%-8s%8s %10s%13s\n",
-					"bytes", "iters", "total", "time", "MB/sec", "usec/xfer");
+			printf("%-8s%-8s%-8s%8s %10s%13s%13s\n",
+					"bytes", "iters", "total",
+					"time", "MB/sec", "usec/xfer",
+					"Mxfers/sec");
 			header = 0;
 		}
 	}
@@ -1151,9 +1262,10 @@ void show_perf(char *name, int tsize, int iters, struct timespec *start,
 
 	printf("%-8s", size_str(str, bytes));
 
-	printf("%8.2fs%10.2f%11.2f\n",
+	usec_per_xfer = ((float)elapsed / iters / xfers_per_iter);
+	printf("%8.2fs%10.2f%11.2f%11.2f\n",
 		elapsed / 1000000.0, bytes / (1.0 * elapsed),
-		((float)elapsed / iters / xfers_per_iter));
+		usec_per_xfer, 1.0/usec_per_xfer);
 }
 
 void show_perf_mr(int tsize, int iters, struct timespec *start,
@@ -1163,6 +1275,7 @@ void show_perf_mr(int tsize, int iters, struct timespec *start,
 	int64_t elapsed = get_elapsed(start, end, MICRO);
 	long long total = (long long) iters * tsize * xfers_per_iter;
 	int i;
+	float usec_per_xfer;
 
 	if (header) {
 		printf("---\n");
@@ -1174,13 +1287,16 @@ void show_perf_mr(int tsize, int iters, struct timespec *start,
 		header = 0;
 	}
 
+	usec_per_xfer = ((float)elapsed / iters / xfers_per_iter);
+
 	printf("- { ");
 	printf("xfer_size: %d, ", tsize);
 	printf("iterations: %d, ", iters);
 	printf("total: %lld, ", total);
 	printf("time: %f, ", elapsed / 1000000.0);
 	printf("MB/sec: %f, ", (total) / (1.0 * elapsed));
-	printf("usec/xfer: %f", ((float)elapsed / iters / xfers_per_iter));
+	printf("usec/xfer: %f", usec_per_xfer);
+	printf("Mxfers/sec: %f", 1.0/usec_per_xfer);
 	printf(" }\n");
 }
 
