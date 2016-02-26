@@ -145,7 +145,7 @@ run_local_cs_test() {
 	continue
     fi
     junk=$((total_tests++))
-    $cs_launch_cmd $run_local_cs $test "$args"
+    $cs_launch_cmd $run_local_cs $testdir/$test "$args"
     if [ $? != 0 ] ; then
 	junk=$((tests_failed++))
 	failed_tests=("${failed_tests[@]}" $test)
