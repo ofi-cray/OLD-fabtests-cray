@@ -263,7 +263,6 @@ done
 pingpong=( \
      fi_msg_pingpong \
      fi_rdm_cntr_pingpong \
-     fi_rdm_inject_pingpong \
      fi_rdm_pingpong \
      fi_rdm_tagged_pingpong \
      fi_ud_pingpong )
