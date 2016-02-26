@@ -46,7 +46,7 @@
 
 #include <shared.h>
 
-struct fi_info *fi, *hints;
+struct fi_info *fi_pep, *fi, *hints;
 struct fid_fabric *fabric;
 struct fid_wait *waitset;
 struct fid_domain *domain;
@@ -411,13 +411,13 @@ int ft_start_server(void)
 	int ret;
 
 	ret = fi_getinfo(FT_FIVERSION, opts.src_addr, opts.src_port, FI_SOURCE,
-			 hints, &fi);
+			 hints, &fi_pep);
 	if (ret) {
 		FT_PRINTERR("fi_getinfo", ret);
 		return ret;
 	}
 
-	ret = fi_fabric(fi->fabric_attr, &fabric, NULL);
+	ret = fi_fabric(fi_pep->fabric_attr, &fabric, NULL);
 	if (ret) {
 		FT_PRINTERR("fi_fabric", ret);
 		return ret;
@@ -429,7 +429,7 @@ int ft_start_server(void)
 		return ret;
 	}
 
-	ret = fi_passive_ep(fabric, fi, &pep, NULL);
+	ret = fi_passive_ep(fabric, fi_pep, &pep, NULL);
 	if (ret) {
 		FT_PRINTERR("fi_passive_ep", ret);
 		return ret;
@@ -628,6 +628,10 @@ void ft_free_res(void)
 		buf = rx_buf = tx_buf = NULL;
 		buf_size = rx_size = tx_size = 0;
 	}
+	if (fi_pep) {
+		fi_freeinfo(fi_pep);
+		fi_pep = NULL;
+	}
 	if (fi) {
 		fi_freeinfo(fi);
 		fi = NULL;
@@ -683,6 +687,7 @@ static int getaddr(char *node, char *service,
 				fi->dest_addr, fi->dest_addrlen);
 	}
 
+	fi_freeinfo(fi);
 	return ret;
 }
 
@@ -954,20 +959,25 @@ static int ft_fdwait_for_comp(struct fid_cq *cq, uint64_t *cur,
 			    uint64_t total, int timeout)
 {
 	struct fi_cq_err_entry comp;
+	struct fid *fids[1];
 	int fd, ret;
 
 	fd = cq == txcq ? tx_fd : rx_fd;
+	fids[0] = &cq->fid;
 
 	while (total - *cur > 0) {
-		ret = fi_cq_sread(cq, &comp, 1, NULL, 0);
+		ret = fi_trywait(fabric, fids, 1);
+		if (ret == FI_SUCCESS) {
+			ret = ft_poll_fd(fd, timeout);
+			if (ret)
+				return ret;
+		}
+
+		ret = fi_cq_read(cq, &comp, 1);
 		if (ret > 0) {
 			(*cur)++;
 		} else if (ret < 0 && ret != -FI_EAGAIN) {
 			return ret;
-		} else {
-			ret = ft_poll_fd(fd, timeout);
-			if (ret)
-				return ret;
 		}
 	}
 

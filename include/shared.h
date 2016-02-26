@@ -47,9 +47,8 @@
 extern "C" {
 #endif
 
-/* all tests should work with 1.0 API or newer */
 #ifndef FT_FIVERSION
-#define FT_FIVERSION FI_VERSION(1,1)
+#define FT_FIVERSION FI_VERSION(1,3)
 #endif
 
 #ifdef __APPLE__
@@ -121,7 +120,7 @@ struct ft_opts {
 	char **argv;
 };
 
-extern struct fi_info *fi, *hints;
+extern struct fi_info *fi_pep, *fi, *hints;
 extern struct fid_fabric *fabric;
 extern struct fid_wait *waitset;
 extern struct fid_domain *domain;
