@@ -185,7 +185,7 @@ else
     aprun=`command -v aprun`
     if [ $? == 0 ]; then
         launcher="aprun"
-        cs_launch_cmd="aprun -n1"
+        cs_launch_cmd="aprun -N1 -n1 -cc none"
     else
         echo "Cannot find a supported job launcher (srun, aprun).  Please load the appropriate module"
         exit -1
