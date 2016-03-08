@@ -609,13 +609,13 @@ static void ft_close_fids(void)
 		FT_CLOSE_FID(mr);
 	FT_CLOSE_FID(ep);
 	FT_CLOSE_FID(pep);
+	FT_CLOSE_FID(pollset);
 	FT_CLOSE_FID(rxcq);
 	FT_CLOSE_FID(txcq);
 	FT_CLOSE_FID(rxcntr);
 	FT_CLOSE_FID(txcntr);
 	FT_CLOSE_FID(av);
 	FT_CLOSE_FID(eq);
-	FT_CLOSE_FID(pollset);
 	FT_CLOSE_FID(domain);
 	FT_CLOSE_FID(waitset);
 	FT_CLOSE_FID(fabric);
@@ -1543,7 +1543,7 @@ int send_recv_greeting(void)
 
 	if (opts.dst_addr) {
 		fprintf(stdout, "Sending message...\n");
-		if (snprintf(tx_buf, message_len, message) >= message_len) {
+		if (snprintf(tx_buf, tx_size, "%s", message) >= tx_size) {
 			fprintf(stderr, "Transmit buffer too small.\n");
 			return -FI_ETOOSMALL;
 		}
