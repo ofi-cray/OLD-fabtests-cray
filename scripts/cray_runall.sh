@@ -265,7 +265,7 @@ pingpong=( \
      fi_rdm_cntr_pingpong \
      fi_rdm_pingpong \
      fi_rdm_tagged_pingpong \
-     fi_ud_pingpong )
+     fi_dgram_pingpong )
 
 # -I: iterations
 PINGPONG_ARGS="-I 100"
