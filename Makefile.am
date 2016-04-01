@@ -262,8 +262,11 @@ bin_PROGRAMS += \
 	ported/omb/rdm_bw \
 	ported/omb/rdm_latency \
 	ported/omb/rdm_mbw_mr \
-	ported/omb/rdm_bw_threaded \
-	ported/omb/rdm_latency_threaded
+	ported/omb/rdm_latency_threaded \
+	ported/omb/rdma_one_sided
+
+bin_SCRIPTS = \
+	ported/omb/rdm_bw_threaded	
 
 ported_omb_rdm_bw_SOURCES = \
 	ported/omb/rdm_bw.c \
@@ -280,10 +283,10 @@ ported_omb_rdm_mbw_mr_SOURCES = \
 	ported/omb/ft_utils.c
 ported_omb_rdm_mbw_mr_LDADD = libfabtests.la
 
-ported_omb_rdm_bw_threaded_SOURCES = \
-        ported/omb/rdm_bw_threaded.c \
+ported_omb_rdma_one_sided_SOURCES = \
+        ported/omb/rdma_one_sided.c \
         ported/omb/ft_utils.c
-ported_omb_rdm_bw_threaded_LDADD = libfabtests.la
+ported_omb_rdma_one_sided_LDADD = libfabtests.la
 
 ported_omb_rdm_latency_threaded_SOURCES = \
         ported/omb/rdm_latency_threaded.c \
