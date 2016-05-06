@@ -103,6 +103,14 @@ enum {
 	FT_OPT_ALIGN		= 1 << 8,
 };
 
+/* for RMA tests --- we want to be able to select fi_writedata, but there is no
+ * constant in libfabric for this */
+enum ft_rma_opcodes {
+	FT_RMA_READ = 1,
+	FT_RMA_WRITE,
+	FT_RMA_WRITEDATA,
+};
+
 struct ft_opts {
 	int iterations;
 	int warmup_iterations;
@@ -117,6 +125,7 @@ struct ft_opts {
 	int options;
 	enum ft_comp_method comp_method;
 	int machr;
+	enum ft_rma_opcodes rma_op;
 	int argc;
 	char **argv;
 };
@@ -127,7 +136,7 @@ extern struct fid_wait *waitset;
 extern struct fid_domain *domain;
 extern struct fid_poll *pollset;
 extern struct fid_pep *pep;
-extern struct fid_ep *ep;
+extern struct fid_ep *ep, *alias_ep;
 extern struct fid_cq *txcq, *rxcq;
 extern struct fid_cntr *txcntr, *rxcntr;
 extern struct fid_mr *mr, no_mr;
@@ -141,6 +150,7 @@ extern int tx_fd, rx_fd;
 extern int timeout;
 
 extern struct fi_context tx_ctx, rx_ctx;
+extern uint64_t remote_cq_data;
 
 extern uint64_t tx_seq, rx_seq, tx_cq_cntr, rx_cq_cntr;
 extern struct fi_av_attr av_attr;
@@ -155,6 +165,7 @@ extern struct ft_opts opts;
 void ft_parseinfo(int op, char *optarg, struct fi_info *hints);
 void ft_parse_addr_opts(int op, char *optarg, struct ft_opts *opts);
 void ft_parsecsopts(int op, char *optarg, struct ft_opts *opts);
+int ft_parse_rma_opts(int op, char *optarg, struct ft_opts *opts);
 void ft_basic_usage(char *desc);
 void ft_usage(char *name, char *desc);
 void ft_csusage(char *name, char *desc);
@@ -177,6 +188,7 @@ extern char default_port[8];
 		.transfer_size = 1024, \
 		.window_size = 64, \
 		.sizes_enabled = FT_DEFAULT_SIZE, \
+		.rma_op = FT_RMA_WRITE, \
 		.argc = argc, .argv = argv \
 	}
 
@@ -237,11 +249,13 @@ int size_to_count(int size);
 
 int ft_alloc_bufs();
 int ft_open_fabric_res();
+int ft_set_rma_caps(struct fi_info *fi, enum ft_rma_opcodes rma_op);
 int ft_start_server();
 int ft_server_connect();
 int ft_client_connect();
 int ft_alloc_active_res(struct fi_info *fi);
 int ft_init_ep(void);
+int ft_init_alias_ep(uint64_t flags);
 int ft_av_insert(struct fid_av *av, void *addr, size_t count, fi_addr_t *fi_addr,
 		uint64_t flags, void *context);
 int ft_init_av(void);
@@ -272,6 +286,12 @@ ssize_t ft_post_tx(struct fid_ep *ep, size_t size, struct fi_context* ctx);
 ssize_t ft_rx(struct fid_ep *ep, size_t size);
 ssize_t ft_tx(struct fid_ep *ep, size_t size);
 ssize_t ft_inject(struct fid_ep *ep, size_t size);
+ssize_t ft_post_rma(enum ft_rma_opcodes op, struct fid_ep *ep, size_t size,
+		struct fi_rma_iov *remote, void *context);
+ssize_t ft_rma(enum ft_rma_opcodes op, struct fid_ep *ep, size_t size,
+		struct fi_rma_iov *remote, void *context);
+ssize_t ft_post_rma_inject(enum ft_rma_opcodes op, struct fid_ep *ep, size_t size,
+		struct fi_rma_iov *remote);
 
 int ft_cq_readerr(struct fid_cq *cq);
 int ft_get_rx_comp(uint64_t total);
@@ -316,14 +336,6 @@ int check_recv_msg(const char *message);
 			return 0;				\
 		}						\
 	} while (0)
-
-/* for RMA tests --- we want to be able to select fi_writedata, but there is no
- * constant in libfabric for this */
-enum ft_rma_opcodes {
-	FT_RMA_READ = 1,
-	FT_RMA_WRITE,
-	FT_RMA_WRITEDATA,
-};
 
 uint64_t get_time_usec(void);
 
