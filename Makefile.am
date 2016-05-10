@@ -313,7 +313,8 @@ ported_omb_rdm_latency_threaded_SOURCES = \
 ported_omb_rdm_latency_threaded_LDADD = libfabtests.la
 
 EXTRA_DIST += \
-	ft_utils.h
+	ft_utils.h \
+	ft_tbarrier.h
 endif
 
 test:
