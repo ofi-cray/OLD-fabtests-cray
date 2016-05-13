@@ -45,13 +45,7 @@
 
 static int run(void)
 {
-	char *node, *service;
-	uint64_t flags;
 	int i, ret;
-
-	ret = ft_read_addr_opts(&node, &service, hints, &flags, &opts);
-	if (ret)
-		return ret;
 
 	if (!opts.dst_addr) {
 		ret = ft_start_server();
@@ -91,6 +85,7 @@ int main(int argc, char **argv)
 	int op, ret;
 
 	opts = INIT_OPTS;
+	opts.options |= FT_OPT_BW;
 
 	hints = fi_allocinfo();
 	if (!hints)
