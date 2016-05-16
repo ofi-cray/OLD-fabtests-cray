@@ -43,8 +43,11 @@ intermittent_failures=$script_path/cray_runall_intermittent_failures
 
 usage() {
     ec=$1
-    echo "cray_runall.sh [-d <dir>]"
+    echo "cray_runall.sh [-d <dir>] [-n <list of nodes>] [-b <cpu_bind option>]"
     echo "   -d location of libfabric tests"
+    echo "   -n list of nodes to execute tests on"
+    echo "   -b select the srun cpu_bind option (none, cores, rank, threads)"
+    echo "          default is nothing."
     exit $ec
 }
 
@@ -145,6 +148,7 @@ run_local_cs_test() {
 	continue
     fi
     junk=$((total_tests++))
+    echo Starting test: $cs_launch_cmd $run_local_cs $testdir/$test \"$args\"
     $cs_launch_cmd $run_local_cs $testdir/$test "$args"
     if [ $? != 0 ] ; then
 	junk=$((tests_failed++))
@@ -158,14 +162,20 @@ run_local_cs_test() {
 tests_failed=0
 tests_passed=0
 testdir=${PWD}
+cpu_bind=""
+node_list=""
+cs_launch_node_list=""
+run_test_node_list=""
 declare -a failed_tests=()
 declare -a skipped_tests=()
 
 if [ $# -gt 0 ] ; then
-  while getopts "d:h" option; do
+  while getopts "b:d:hn:" option; do
     case $option in
+      b) cpu_bind="--cpu_bind=v,$OPTARG";;
       d) testdir=$OPTARG;;
       h) usage 0 ;;
+      n) node_list="$OPTARG";;
       *) usage 1;;
     esac
   done
@@ -179,13 +189,21 @@ nprocs=1
 #
 srun=`command -v srun`
 if [ $? == 0 ]; then
+    if [[ "${node_list}" != "" ]]; then
+        cs_launch_node_list="-w${node_list%%,*}"
+        run_test_node_list="--nodelist ${node_list}"
+    fi
     launcher="srun"
-    cs_launch_cmd="srun -n1 --exclusive"
+    cs_launch_cmd="srun -n1 --exclusive ${cs_launch_node_list} ${cpu_bind}"
 else
     aprun=`command -v aprun`
     if [ $? == 0 ]; then
+        if [[ "${node_list}" != "" ]]; then
+            cs_launch_node_list="-L ${node_list}"
+            run_test_node_list="--nodelist ${node_list}"
+        fi
         launcher="aprun"
-        cs_launch_cmd="aprun -N1 -n1 -cc none"
+        cs_launch_cmd="aprun -N1 -n1 -cc none ${cs_launch_node_list}"
     else
         echo "Cannot find a supported job launcher (srun, aprun).  Please load the appropriate module"
         exit -1
@@ -238,7 +256,7 @@ no_server=( \
     fi_size_left_test )
 
 for test in ${no_server[@]}; do
-    run_test "$test" "--no-server"
+    run_test "$test" "--no-server ${run_test_node_list} ${cpu_bind}"
 done
 
 two_nodes=( \
@@ -247,7 +265,7 @@ two_nodes=( \
      rdm_mbw_mr )
 
 for test in ${two_nodes[@]}; do
-    run_test "$test" "--no-server --nnodes=2"
+    run_test "$test" "--no-server --nnodes=2 ${run_test_node_list} ${cpu_bind}"
 done
 
 two_nodes_threaded=( \
@@ -256,7 +274,7 @@ two_nodes_threaded=( \
 
 for test in ${two_nodes_threaded[@]} ; do
     for t in 1 2 4 8 12 16 24; do
-	run_test "$test" "--no-server --nnodes=2 --nthreads=$t --client-args=-t$t"
+	run_test "$test" "--no-server --nnodes=2 --nthreads=$t --client-args=-t$t ${run_test_node_list} ${cpu_bind}"
     done
 done
 
@@ -268,7 +286,7 @@ pingpong=( \
      fi_dgram_pingpong )
 
 # -I: iterations
-PINGPONG_ARGS="-I 100"
+PINGPONG_ARGS="-I 10000 -w 1000"
 PROV=gni
 
 for test in ${pingpong[@]}; do
