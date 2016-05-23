@@ -45,7 +45,7 @@ import os, select, fcntl, time # for timeout stuff
 from signal import SIGALRM
 
 class fabtest:
-    def __init__(self, _name, _fabric, _timeout, _args=None, _nnodes='1', _ntasks='-1', _nthreads='-1', _launcher=None, _server_addr=None):
+    def __init__(self, _name, _fabric, _timeout, _args=None, _nnodes='1', _ntasks='-1', _nthreads='-1', _launcher=None, _server_addr=None, _nodelist=None, _cpu_bind=''):
         self.name = _name
         self.fabric = _fabric
         self.args = _args
@@ -55,17 +55,23 @@ class fabtest:
         self.timeout = _timeout
         self.launcher = _launcher
         self.server_addr = _server_addr
+        self.nodelist = _nodelist
+        self.cpu_bind = _cpu_bind
 
     def start(self):
         cmd = list()
         if self.launcher == 'srun':
-            cmd += ['srun', '-N'+self.nnodes, '--exclusive', '--cpu_bind=none', '-t'+self.formattedTimeout()]
+            cmd += ['srun', '-N'+self.nnodes, '--exclusive', '-t'+self.formattedTimeout()]
             if self.ntasks != '-1':
                 cmd += [ '-n'+self.ntasks ]
             else:
                 cmd += [ '--ntasks-per-node=1' ]
             if self.nthreads != '-1':
                 cmd += [ '-c'+self.nthreads ]
+            if self.nodelist != None:
+                cmd += [ '-w'+self.nodelist ]
+            if self.cpu_bind != '-1':
+                cmd += [ '--cpu_bind='+self.cpu_bind ]
         elif self.launcher == 'aprun':
             cmd += ['aprun', '-n'+self.nnodes, '-t'+str(self.timeout)]
             if self.ntasks != '-1':
@@ -74,6 +80,8 @@ class fabtest:
                 cmd += [ '-N1' ]
             if self.nthreads != '-1':
                 cmd += [ '-d'+self.nthreads ]
+            if self.nodelist != None:
+                cmd += [ '-L'+self.nodelist ]
         cmd += [self.name, '-f', self.fabric]
         if self.args != None:
             cmd += self.args.split()
@@ -195,6 +203,8 @@ def _main():
     parser.add_argument('--server-args', metavar='args', dest='server_args', action='store', default=None, help='Server args')
     parser.add_argument('--no-server', dest='run_server', default=True, action='store_false', help='Do not run a server')
     parser.add_argument('-t', '--timeout', dest='timeout', action='store', type=int, default=60, help='timeout')
+    parser.add_argument('--nodelist', dest='nodelist', default=None, help='List of nodes to execute on')
+    parser.add_argument('--cpu_bind', dest='cpubind', default='-1', help='CPU binding option')
 
     args = parser.parse_args()
 
@@ -213,6 +223,8 @@ def _main():
     server_args = args.server_args
     run_server = args.run_server
     timeout = args.timeout
+    nodelist = args.nodelist
+    cpubind = args.cpubind
 
     waitlist = list();
     if run_server:
@@ -225,7 +237,7 @@ def _main():
         if server_addr == None:
             server_addr = socket.gethostbyname(socket.gethostname())
 
-    client = fabtest(testname, fabric, timeout, client_args, nnodes, ntasks, nthreads, launcher, server_addr)
+    client = fabtest(testname, fabric, timeout, client_args, nnodes, ntasks, nthreads, launcher, server_addr, nodelist, cpubind)
     if client.start() != 0:
         sys.stdout.write('Client failed to start.\n')
         return -1
