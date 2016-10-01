@@ -35,8 +35,8 @@ These tests are a mix of very basic functionality tests that show major features
 	fi_rdm_rma_trigger: A simple RDM client-server example that uses triggered RMA
 	fi_rdm_shared_av: A simple RDM client-server example where av is shared between two child processes
 	fi_rdm_tagged_peek: An RDM client-server example that uses tagged FI_PEEK
-	fi_shared_ctx: An client-server example that uses shared context
-	fi_scalable_ep: An RDM client-server example with scalable endpoints
+	fi_shared_ctx: A client-server example that uses shared context
+	fi_scalable_ep: A RDM client-server example with scalable endpoints
 	fi_cm_data: A MSG client-server example that uses CM data
 
 ## Benchmarks
@@ -44,20 +44,23 @@ These tests are a mix of very basic functionality tests that show major features
 The client and the server exchange messages in a ping-pong manner for various messages sizes and report latency numbers.
 
 	fi_msg_pingpong: A ping-pong client-server example using MSG endpoints
+	fi_msg_bw: A bandwidth test for MSG endpoints
+	fi_rma_bw: A bandwidth test using RMA operations
 	fi_rdm_pingpong: A ping-pong client-server example using RDM endpoints
-	fi_rdm_cntr_pingpong: An RDM ping pong client-server using counters
-	fi_rdm_pingpong: An RDM ping-pong client-server example using inject
+	fi_rdm_cntr_pingpong: A RDM ping pong client-server using counters
 	fi_rdm_tagged_pingpong: A ping-pong client-server example using tagged messages
+	fi_rdm_tagged_bw: A bandwidth test for RDM endpoints with tagged messages
 	fi_dgram_pingpong: A ping-pong client-server example using DGRAM endpoints
 
 ## Streaming
 
 These are one way streaming data tests.
 
+	fi_msg_stream: A basic streaming client-server example using MSG endpoints
 	fi_msg_rma: A streaming client-server example using RMA operations between MSG endpoints
 	fi_rdm_rma: A streaming client-server example using RMA operations
-	fi_rdm_atomic: An RDM streaming client-server using atomic operations
-	fi_rdm_multi_recv: An RDM streaming client-server example using multi recv buffer
+	fi_rdm_atomic: A RDM streaming client-server using atomic operations
+	fi_rdm_multi_recv: A RDM streaming client-server example using multi recv buffer
 
 ## Unit
 	 fi_eq_test: Unit tests for event queue
@@ -91,16 +94,16 @@ These are comprehensive latency and bandwidth tests that can handle a variety of
 
 The common options for most of the tests are listed below. Individual tests may have additional options.
 
-*-f <provider_name>*
+*-p <provider_name>*
 : The name of the underlying fabric provider e.g. sockets, verbs, psm etc. If the provider name is not provided, the test will pick one from the list of the available providers it finds by fi_getinfo call.
 
-*-n <domain>*
+*-d <domain>*
 : The name of the the specific domain to be used.
 
-*-b <src_port>*
+*-B <src_port>*
 : The non-default source port number of the endpoint.
 
-*-p <dest_port>*
+*-P <dest_port>*
 : The non-default destination port number of the endpoint.
 
 *-s <src_addr>*
@@ -128,15 +131,15 @@ The common options for most of the tests are listed below. Individual tests may 
 
 ## A simple example
 
-	run server: <test_name> -f <provider_name> -s <source_addr>
-		e.g.	fi_msg_rma -f sockets -s 192.168.0.123
-	run client: <test_name> <server_addr> -f <provider_name>
-		e.g.	fi_msg_rma 192.168.0.123 -f sockets
+	run server: <test_name> -p <provider_name> -s <source_addr>
+		e.g.	fi_msg_rma -p sockets -s 192.168.0.123
+	run client: <test_name> <server_addr> -p <provider_name>
+		e.g.	fi_msg_rma 192.168.0.123 -p sockets
 
 ## An example with various options
 
-	run server: fi_rdm_atomic -f psm -s 192.168.0.123 -I 1000 -S 1024
-	run client: fi_rdm_atomic 192.168.0.123 -f psm -I 1000 -S 1024
+	run server: fi_rdm_atomic -p psm -s 192.168.0.123 -I 1000 -S 1024
+	run client: fi_rdm_atomic 192.168.0.123 -p psm -I 1000 -S 1024
 
 This will run "fi_rdm_atomic" for all atomic operations with
 
